@@ -6,13 +6,13 @@ import numpy as np
 import os
 import lmdb
 from scipy.misc import imresize
-
+from PIL import Image
 
 UNKNOWN_FLOW_THRESH = 1e9
 
+
 # 1. Read in label files
 def main():
-
     path_src = 'labels/'
     data_path = 'data/'
     image_ext = '.ppm'
@@ -22,12 +22,18 @@ def main():
     preprocess_mode = 'pad'
     im_sz = [384, 512]
 
-    # Train
+    # ==== Train =====
     # Labels
     gt = fl.read_flow(data_path + label_file)
     print('label')
     path_dst = 'train_labels_lmdb'
     convert2lmdb(gt[:, :, 0], path_dst, preprocess_mode, im_sz, 'label')
+
+    # Images
+    print('image')
+    img0 = data_path + train_imgs[0]
+    path_dst = 'train_images_lmdb'
+    convert2lmdb(img0, path_dst, preprocess_mode, im_sz, 'image')
 
 
 def convert2lmdb(img_src, path_dst, preprocess_mode, im_sz, data_mode):
@@ -40,15 +46,20 @@ def convert2lmdb(img_src, path_dst, preprocess_mode, im_sz, data_mode):
     db = lmdb.open(path_dst, map_size=int(1e12))
 
     with db.begin(write=True) as in_txn:
-        img = img_src
+
         if data_mode == 'label':
+            img = img_src
             img = preprocess_label(img, preprocess_mode, im_sz, data_mode)
         elif data_mode == 'image':
+            img = np.array(Image.open(img_src))
             img = preprocess_image(img, preprocess_mode, im_sz, data_mode)
+        else:
+            raise Exception('unsupported data mode')
 
         # TODO : USE FLOW U AND V IN FUTURE, NOW ONLY FLOW MAP U(HORIZONTAL)
         img_dat = caffe.io.array_to_datum(img)
         in_txn.put('label_file', img_dat.SerializeToString())
+    print(path_dst, 'created successfully!')
 
 
 def preprocess_label(img, preprocess_mode, im_sz, data_mode):
@@ -59,6 +70,9 @@ def preprocess_label(img, preprocess_mode, im_sz, data_mode):
 
 
 def preprocess_image(img, preprocess_mode, im_sz, data_mode):
+    img = preprocess_data(img, preprocess_mode, im_sz, 'image')
+    img = img[:,:, ::-1]
+    img = img.transpose((2,0,1))
     return img
 
 
